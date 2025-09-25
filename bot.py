@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import sqlite3
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
@@ -23,7 +22,7 @@ CHANNEL_ID = -1003033705024
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ================ DB ==================
+# ================ DB INIT =================
 conn = sqlite3.connect("files.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -35,6 +34,7 @@ CREATE TABLE IF NOT EXISTS files (
     downloads INTEGER DEFAULT 0
 )
 """)
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY
@@ -47,7 +47,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user.id,))
     conn.commit()
-    await update.message.reply_text("Bot started!")
 
     # Agar ?start=<key> link se aaye
     if context.args:
@@ -87,7 +86,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if document:
         file_id = document.file_id
     elif photo:
-        file_id = photo[-1].file_id
+        file_id = photo[-1].file_id  # last/highest quality photo
     else:
         return await update.message.reply_text("⚠️ Please send a valid file.")
 
@@ -181,25 +180,32 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📊 *Bot Stats:*\n\n👥 Users: {total_users}\n📂 Files: {total_files}",
                                     parse_mode="Markdown")
 
+async def send_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 1:
+        return await update.message.reply_text("⚠️ Invalid file key.")
+    file_key = context.args[0]
+
+    cursor.execute("SELECT file_id, downloads FROM files WHERE key=?", (file_key,))
+    row = cursor.fetchone()
+    if not row:
+        return await update.message.reply_text("❌ File not found or deleted.")
+
+    file_id, downloads = row
+    cursor.execute("UPDATE files SET downloads=? WHERE key=?", (downloads + 1, file_key))
+    conn.commit()
+
+    await update.message.reply_document(file_id)
 
 # ================ MAIN =================
-async def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+app = ApplicationBuilder().token(TOKEN).build()
 
-    # Add handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file))
-    app.add_handler(CommandHandler("myfiles", myfiles))
-    app.add_handler(CommandHandler("delete", delete_file))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), caption_handler))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    # Initialize & start bot safely
-    await app.initialize()
-    await app.start()
-    logger.info("Bot started successfully on Render!")
-    await app.updater.start_polling()  # polling for updates
-    await app.idle()  # keep the bot alive
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file))
+app.add_handler(CommandHandler("myfiles", myfiles))
+app.add_handler(CommandHandler("delete", delete_file))
+app.add_handler(CommandHandler("stats", stats))
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), caption_handler))
+app.add_handler(CallbackQueryHandler(button_handler))
+app.add_handler(CommandHandler("start", send_file))
 
-if __name__ == "__main__":
-    asyncio.run(main())
+app.run_polling()
