@@ -1,6 +1,6 @@
+import asyncio
 import logging
 import sqlite3
-import asyncio
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ApplicationBuilder,
@@ -23,7 +23,7 @@ CHANNEL_ID = -1003033705024
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ================ DB INIT =================
+# ================ DB ==================
 conn = sqlite3.connect("files.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS files (
     downloads INTEGER DEFAULT 0
 )
 """)
-
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY
@@ -48,6 +47,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user.id,))
     conn.commit()
+    await update.message.reply_text("Bot started!")
 
     # Agar ?start=<key> link se aaye
     if context.args:
@@ -194,11 +194,12 @@ async def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), caption_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
-
-    # Start the bot
+    # Initialize & start bot safely
+    await app.initialize()
     await app.start()
-    await app.updater.start_polling()
-    await app.idle()
+    logger.info("Bot started successfully on Render!")
+    await app.updater.start_polling()  # polling for updates
+    await app.idle()  # keep the bot alive
 
 if __name__ == "__main__":
     asyncio.run(main())
