@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+import asyncio
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ApplicationBuilder,
@@ -182,14 +183,22 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================ MAIN =================
-app = ApplicationBuilder().token(TOKEN).build()
+async def main():
+    app = ApplicationBuilder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file))
-app.add_handler(CommandHandler("myfiles", myfiles))
-app.add_handler(CommandHandler("delete", delete_file))
-app.add_handler(CommandHandler("stats", stats))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), caption_handler))
-app.add_handler(CallbackQueryHandler(button_handler))
+    # Add handlers
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file))
+    app.add_handler(CommandHandler("myfiles", myfiles))
+    app.add_handler(CommandHandler("delete", delete_file))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), caption_handler))
+    app.add_handler(CallbackQueryHandler(button_handler))
 
-app.run_polling()
+    # Start the bot
+    await app.start()
+    await app.updater.start_polling()
+    await app.idle()
+
+if __name__ == "__main__":
+    asyncio.run(main())
