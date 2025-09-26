@@ -18,6 +18,7 @@ DEV_URL = "https://t.me/hiden_25"
 CHANNEL_URL = "https://t.me/freeotpss"
 OWNER_ID = 7761576669
 CHANNEL_ID = -1003033705024
+DEFAULT_DB_PATH = "files.db"  # fallback inside project folder
 DB_PATH = "/var/data/files.db"  # Persistent storage path for Render
 
 # ================ LOGGER ==================
@@ -26,18 +27,15 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
 # ================ DB INIT =================
 try:
-    # Check if the directory exists and is writable
     db_dir = os.path.dirname(DB_PATH)
     if not os.path.exists(db_dir):
-        logger.error(f"Directory does not exist: {db_dir}")
-        raise OSError(f"Directory {db_dir} does not exist. Ensure Render disk is mounted at {db_dir}.")
-    if not os.access(db_dir, os.W_OK):
-        logger.error(f"Directory is not writable: {db_dir}")
-        raise OSError(f"Directory {db_dir} is not writable. Check Render disk permissions.")
-    logger.info(f"Directory {db_dir} exists and is writable")
+        # Agar /var/data nahi hai to fallback lo
+        logger.warning(f"{db_dir} not found, falling back to local {DEFAULT_DB_PATH}")
+        DB_PATH = DEFAULT_DB_PATH
+
+    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
 
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
