@@ -1,5 +1,4 @@
 import logging
-import sqlite3
 import os
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -10,6 +9,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+from pymongo import MongoClient
 
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN", "7433667530:AAHTYaW6Y76lfX5wN3q8ht7Zvp6-wCurObk")
@@ -18,8 +18,8 @@ DEV_URL = "https://t.me/hiden_25"
 CHANNEL_URL = "https://t.me/freeotpss"
 OWNER_ID = 7761576669
 CHANNEL_ID = -1003033705024
-DEFAULT_DB_PATH = "files.db"  # fallback inside project folder
-DB_PATH = "/var/data/files.db"  # Persistent storage path for Render
+
+MONGO_URL = "mongodb+srv://darkdevil9793:1aNXaCVF88VBo1Ma@cluster0.8a6miuy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
 # ================ LOGGER ==================
 logging.basicConfig(
@@ -27,64 +27,41 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
 # ================ DB INIT =================
 try:
-    db_dir = os.path.dirname(DB_PATH)
-    if not os.path.exists(db_dir):
-        # Agar /var/data nahi hai to fallback lo
-        logger.warning(f"{db_dir} not found, falling back to local {DEFAULT_DB_PATH}")
-        DB_PATH = DEFAULT_DB_PATH
-
-    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
-
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS files (
-        key TEXT PRIMARY KEY,
-        file_id TEXT,
-        user_id INTEGER,
-        downloads INTEGER DEFAULT 0
-    )
-    """)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY
-    )
-    """)
-    conn.commit()
-    logger.info(f"Database initialized successfully at {DB_PATH}")
-except (sqlite3.Error, OSError) as e:
-    logger.error(f"Failed to initialize database at {DB_PATH}: {e}")
+    mongo_client = MongoClient(MONGO_URL)
+    db = mongo_client["file_bot_db"]
+    files_col = db["files"]
+    users_col = db["users"]
+    logger.info("MongoDB connected successfully!")
+except Exception as e:
+    logger.error(f"Failed to connect MongoDB: {e}")
     raise
 
 # ================ HANDLERS =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     try:
-        cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user.id,))
-        conn.commit()
-    except sqlite3.Error as e:
-        logger.error(f"Database error in start: {e}")
+        users_col.update_one({"user_id": user.id}, {"$setOnInsert": {"user_id": user.id}}, upsert=True)
+    except Exception as e:
+        logger.error(f"MongoDB error in start: {e}")
         await update.message.reply_text("⚠️ An error occurred. Please try again later.")
         return
 
     if context.args:
         file_key = context.args[0]
         try:
-            cursor.execute("SELECT file_id, downloads FROM files WHERE key=?", (file_key,))
-            row = cursor.fetchone()
-            if row:
-                file_id, downloads = row
-                cursor.execute("UPDATE files SET downloads=? WHERE key=?", (downloads + 1, file_key))
-                conn.commit()
-                await update.message.reply_document(file_id)
+            file_doc = files_col.find_one({"key": file_key})
+            if file_doc:
+                files_col.update_one({"key": file_key}, {"$inc": {"downloads": 1}})
+                await update.message.reply_document(file_doc["file_id"])
                 return
             else:
                 await update.message.reply_text("❌ File not found or expired.")
                 return
-        except sqlite3.Error as e:
-            logger.error(f"Database error in start: {e}")
+        except Exception as e:
+            logger.error(f"MongoDB error in start: {e}")
             await update.message.reply_text("⚠️ An error occurred while retrieving the file.")
             return
 
@@ -110,19 +87,19 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if document:
         file_id = document.file_id
     elif photo:
-        file_id = photo[-1].file_id  # Use highest quality photo
+        file_id = photo[-1].file_id
     else:
         return await update.message.reply_text("⚠️ Please send a valid file.")
 
     file_key = str(abs(hash(file_id)))[:10]
     try:
-        cursor.execute(
-            "INSERT OR REPLACE INTO files (key, file_id, user_id, downloads) VALUES (?, ?, ?, 0)",
-            (file_key, file_id, user.id)
+        files_col.update_one(
+            {"key": file_key},
+            {"$set": {"file_id": file_id, "user_id": user.id}, "$setOnInsert": {"downloads": 0}},
+            upsert=True
         )
-        conn.commit()
-    except sqlite3.Error as e:
-        logger.error(f"Database error in handle_file: {e}")
+    except Exception as e:
+        logger.error(f"MongoDB error in handle_file: {e}")
         await update.message.reply_text("⚠️ An error occurred while storing the file.")
         return
 
@@ -173,18 +150,18 @@ async def caption_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def myfiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     try:
-        cursor.execute("SELECT key FROM files WHERE user_id=?", (user.id,))
-        files = cursor.fetchall()
+        files = files_col.find({"user_id": user.id})
+        files = list(files)
         if not files:
             return await update.message.reply_text("📂 You have no uploaded files.")
         msg = "📁 *Your Files:*\n\n"
         for f in files:
-            key = f[0]
+            key = f["key"]
             link = f"https://t.me/{BOT_USERNAME}?start={key}"
             msg += f"🔗 {link}\n"
         await update.message.reply_text(msg, parse_mode="Markdown")
-    except sqlite3.Error as e:
-        logger.error(f"Database error in myfiles: {e}")
+    except Exception as e:
+        logger.error(f"MongoDB error in myfiles: {e}")
         await update.message.reply_text("⚠️ An error occurred while retrieving your files.")
 
 async def delete_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -193,11 +170,10 @@ async def delete_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("⚠️ Usage: /delete <file_key>")
     file_key = context.args[0]
     try:
-        cursor.execute("DELETE FROM files WHERE key=? AND user_id=?", (file_key, user.id))
-        conn.commit()
+        files_col.delete_one({"key": file_key, "user_id": user.id})
         await update.message.reply_text("🗑 File deleted (if existed).")
-    except sqlite3.Error as e:
-        logger.error(f"Database error in delete_file: {e}")
+    except Exception as e:
+        logger.error(f"MongoDB error in delete_file: {e}")
         await update.message.reply_text("⚠️ An error occurred while deleting the file.")
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -205,16 +181,14 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user.id != OWNER_ID:
         return await update.message.reply_text("⚠️ You are not allowed to use this command.")
     try:
-        cursor.execute("SELECT COUNT(*) FROM files")
-        total_files = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM users")
-        total_users = cursor.fetchone()[0]
+        total_files = files_col.count_documents({})
+        total_users = users_col.count_documents({})
         await update.message.reply_text(
             f"📊 *Bot Stats:*\n\n👥 Users: {total_users}\n📂 Files: {total_files}",
             parse_mode="Markdown"
         )
-    except sqlite3.Error as e:
-        logger.error(f"Database error in stats: {e}")
+    except Exception as e:
+        logger.error(f"MongoDB error in stats: {e}")
         await update.message.reply_text("⚠️ An error occurred while retrieving stats.")
 
 # ================ MAIN =================
