@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+import os
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,35 +12,42 @@ from telegram.ext import (
 )
 
 # ================= CONFIG =================
-TOKEN = "7433667530:AAHTYaW6Y76lfX5wN3q8ht7Zvp6-wCurObk"
+TOKEN = os.getenv("TOKEN", "7433667530:AAHTYaW6Y76lfX5wN3q8ht7Zvp6-wCurObk")
 BOT_USERNAME = "freeefilebot"
 DEV_URL = "https://t.me/hiden_25"
 CHANNEL_URL = "https://t.me/freeotpss"
 OWNER_ID = 7761576669
 CHANNEL_ID = -1003033705024
+DB_PATH = "/var/data/files.db"  # Persistent storage path for Render
 
 # ================ LOGGER ==================
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 # ================ DB INIT =================
-conn = sqlite3.connect("files.db", check_same_thread=False)
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS files (
-    key TEXT PRIMARY KEY,
-    file_id TEXT,
-    user_id INTEGER,
-    downloads INTEGER DEFAULT 0
-)
-""")
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY
-)
-""")
-conn.commit()
+try:
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS files (
+        key TEXT PRIMARY KEY,
+        file_id TEXT,
+        user_id INTEGER,
+        downloads INTEGER DEFAULT 0
+    )
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY
+    )
+    """)
+    conn.commit()
+except sqlite3.Error as e:
+    logger.error(f"Failed to initialize database: {e}")
+    raise
 
 # ================ HANDLERS =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -48,7 +56,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user.id,))
         conn.commit()
     except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error in start: {e}")
         await update.message.reply_text("⚠️ An error occurred. Please try again later.")
         return
 
@@ -67,7 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ File not found or expired.")
                 return
         except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
+            logger.error(f"Database error in start: {e}")
             await update.message.reply_text("⚠️ An error occurred while retrieving the file.")
             return
 
@@ -93,17 +101,19 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if document:
         file_id = document.file_id
     elif photo:
-        file_id = photo[-1].file_id
+        file_id = photo[-1].file_id  # Use highest quality photo
     else:
         return await update.message.reply_text("⚠️ Please send a valid file.")
 
     file_key = str(abs(hash(file_id)))[:10]
     try:
-        cursor.execute("INSERT OR REPLACE INTO files (key, file_id, user_id, downloads) VALUES (?, ?, ?, 0)",
-                       (file_key, file_id, user.id))
+        cursor.execute(
+            "INSERT OR REPLACE INTO files (key, file_id, user_id, downloads) VALUES (?, ?, ?, 0)",
+            (file_key, file_id, user.id)
+        )
         conn.commit()
     except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error in handle_file: {e}")
         await update.message.reply_text("⚠️ An error occurred while storing the file.")
         return
 
@@ -143,7 +153,7 @@ async def caption_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(
             chat_id=CHANNEL_ID,
-            text=f"{caption}",
+            text=caption,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         await update.message.reply_text("✅ File shared in channel!")
@@ -165,7 +175,7 @@ async def myfiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"🔗 {link}\n"
         await update.message.reply_text(msg, parse_mode="Markdown")
     except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error in myfiles: {e}")
         await update.message.reply_text("⚠️ An error occurred while retrieving your files.")
 
 async def delete_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,7 +188,7 @@ async def delete_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         await update.message.reply_text("🗑 File deleted (if existed).")
     except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error in delete_file: {e}")
         await update.message.reply_text("⚠️ An error occurred while deleting the file.")
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -190,21 +200,33 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_files = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM users")
         total_users = cursor.fetchone()[0]
-        await update.message.reply_text(f"📊 *Bot Stats:*\n\n👥 Users: {total_users}\n📂 Files: {total_files}",
-                                       parse_mode="Markdown")
+        await update.message.reply_text(
+            f"📊 *Bot Stats:*\n\n👥 Users: {total_users}\n📂 Files: {total_files}",
+            parse_mode="Markdown"
+        )
     except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error in stats: {e}")
         await update.message.reply_text("⚠️ An error occurred while retrieving stats.")
 
 # ================ MAIN =================
-app = ApplicationBuilder().token(TOKEN).build()
+async def main():
+    try:
+        app = ApplicationBuilder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file))
-app.add_handler(CommandHandler("myfiles", myfiles))
-app.add_handler(CommandHandler("delete", delete_file))
-app.add_handler(CommandHandler("stats", stats))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), caption_handler))
-app.add_handler(CallbackQueryHandler(button_handler))
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file))
+        app.add_handler(CommandHandler("myfiles", myfiles))
+        app.add_handler(CommandHandler("delete", delete_file))
+        app.add_handler(CommandHandler("stats", stats))
+        app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), caption_handler))
+        app.add_handler(CallbackQueryHandler(button_handler))
 
-app.run_polling()
+        logger.info("Starting bot with polling...")
+        await app.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        logger.error(f"Error in main: {e}")
+        raise
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
