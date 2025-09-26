@@ -29,10 +29,16 @@ logger = logging.getLogger(__name__)
 
 # ================ DB INIT =================
 try:
-    # Ensure the directory exists
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    logger.info(f"Ensured directory exists: {os.path.dirname(DB_PATH)}")
-    
+    # Check if the directory exists and is writable
+    db_dir = os.path.dirname(DB_PATH)
+    if not os.path.exists(db_dir):
+        logger.error(f"Directory does not exist: {db_dir}")
+        raise OSError(f"Directory {db_dir} does not exist. Ensure Render disk is mounted at {db_dir}.")
+    if not os.access(db_dir, os.W_OK):
+        logger.error(f"Directory is not writable: {db_dir}")
+        raise OSError(f"Directory {db_dir} is not writable. Check Render disk permissions.")
+    logger.info(f"Directory {db_dir} exists and is writable")
+
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute("""
@@ -50,11 +56,8 @@ try:
     """)
     conn.commit()
     logger.info(f"Database initialized successfully at {DB_PATH}")
-except sqlite3.Error as e:
+except (sqlite3.Error, OSError) as e:
     logger.error(f"Failed to initialize database at {DB_PATH}: {e}")
-    raise
-except OSError as e:
-    logger.error(f"Failed to create directory for database at {os.path.dirname(DB_PATH)}: {e}")
     raise
 
 # ================ HANDLERS =================
