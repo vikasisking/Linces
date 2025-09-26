@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 # ================ DB INIT =================
 try:
+    # Ensure the directory exists
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    logger.info(f"Ensured directory exists: {os.path.dirname(DB_PATH)}")
+    
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute("""
@@ -45,8 +49,12 @@ try:
     )
     """)
     conn.commit()
+    logger.info(f"Database initialized successfully at {DB_PATH}")
 except sqlite3.Error as e:
-    logger.error(f"Failed to initialize database: {e}")
+    logger.error(f"Failed to initialize database at {DB_PATH}: {e}")
+    raise
+except OSError as e:
+    logger.error(f"Failed to create directory for database at {os.path.dirname(DB_PATH)}: {e}")
     raise
 
 # ================ HANDLERS =================
