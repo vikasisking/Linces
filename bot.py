@@ -70,10 +70,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📢 Channel", url=CHANNEL_URL)]
     ]
     await update.message.reply_text(
-        "📂 Welcome to *File Sharing Bot*\n\n"
-        "➡️ Send me any file and I will give you a sharable link.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
+    "<blockquote>📂 Welcome To H2I Free File Bot\n\n"
+    "Here You Get Num@ber File</blockquote>\n\n"
+    "Join backup channel 👉 https://t.me/+rKlmo3b5gg5iMzVl",
+    reply_markup=InlineKeyboardMarkup(keyboard),
+    parse_mode="HTML"
     )
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
