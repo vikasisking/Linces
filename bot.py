@@ -6,14 +6,13 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
 from flask import Flask, Response
 
 # ================= CONFIG =================
-TOKEN = os.getenv("TOKEN", "7727135902:AAEINRfdD1rkV_78apIyMNqfWDwGyerM8xQ")
+TOKEN = "7727135902:AAEINRfdD1rkV_78apIyMNqfWDwGyerM8xQ"
 BOT_USERNAME = "freeefilebot"
 DEV_URL = "https://t.me/hiden_25"
 CHANNEL_URL = "https://t.me/freeotpss"
@@ -163,7 +162,7 @@ def root():
     return Response("OK", status=200)
 
 # ================ MAIN =================
-async def main():
+def main():
     application = ApplicationBuilder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
@@ -173,7 +172,6 @@ async def main():
     application.add_handler(CommandHandler("stats", stats))
 
     logger.info("Starting bot with polling...")
-    # Yahan await hata do
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
@@ -181,5 +179,4 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True)
     flask_thread.start()
 
-    import asyncio
-    asyncio.run(main())
+    main()
