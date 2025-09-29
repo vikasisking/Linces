@@ -173,11 +173,13 @@ async def main():
     application.add_handler(CommandHandler("stats", stats))
 
     logger.info("Starting bot with polling...")
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Yahan await hata do
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    import threading, asyncio
+    import threading
     flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True)
     flask_thread.start()
 
+    import asyncio
     asyncio.run(main())
