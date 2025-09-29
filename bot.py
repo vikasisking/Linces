@@ -1,19 +1,20 @@
 import logging
 import os
 import json
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputFile
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
 from flask import Flask, Response
 
 # ================= CONFIG =================
-TOKEN = "8496044042:AAEdkG5i66f_usippWuIZrYwVlIWIh5OIIM"
-BOT_USERNAME = "Akkwowiwirjrrbot"
+TOKEN = "7433667530:AAHTYaW6Y76lfX5wN3q8ht7Zvp6-wCurObk"
+BOT_USERNAME = "freeefilebot"
 DEV_URL = "https://t.me/hiden_25"
 CHANNEL_URL = "https://t.me/freeotpss"
 OWNER_ID = 7761576669
@@ -49,7 +50,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Add user if not exists
     if str(user.id) not in data["users"]:
-        data["users"][str(user.id)] = {"files": []}
+        data["users"][str(user.id)] = {"files": [], "username": user.username}
         save_data(data)
 
     if context.args:
@@ -73,7 +74,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "➡️ Send me any file and I will give you a sharable link.\n\n"
         "🔹 Use /myfiles to see your uploaded files\n"
         "🔹 Use /delete <key> to delete a file\n"
-        "🔹 Use /stats to see bot statistics (Admin only)\n",
+        "🔹 Use /stats to see bot statistics (Admin only)\n"
+        "🔹 Use /broadcast <msg> to send message to all users (Admin only)\n"
+        "🔹 Use /exportusers to download users.json (Admin only)\n",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -99,13 +102,55 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "downloads": 0
     }
     if str(user.id) not in data["users"]:
-        data["users"][str(user.id)] = {"files": []}
+        data["users"][str(user.id)] = {"files": [], "username": user.username}
     data["users"][str(user.id)]["files"].append(file_key)
 
     save_data(data)
 
     link = f"https://t.me/{BOT_USERNAME}?start={file_key}"
     await update.message.reply_text(f"✅ File stored!\n🔗 Link: {link}")
+
+    # 🔹 Admin ke liye Channel me Share Option
+    if user.id == OWNER_ID:
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Yes", callback_data=f"share_yes:{file_key}"),
+                InlineKeyboardButton("❌ No", callback_data="share_no")
+            ]
+        ]
+        await update.message.reply_text(
+            "📢 Do you want to share this file in your channel?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data.startswith("share_yes:"):
+        file_key = query.data.split(":")[1]
+        context.user_data["share_file_key"] = file_key
+        await query.message.reply_text("✍️ Please send the caption text for the channel post.")
+    elif query.data == "share_no":
+        await query.message.reply_text("❌ File not shared to channel.")
+
+async def caption_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if "share_file_key" not in context.user_data:
+        return
+    caption = update.message.text
+    file_key = context.user_data.pop("share_file_key")
+    link = f"https://t.me/{BOT_USERNAME}?start={file_key}"
+    keyboard = [[InlineKeyboardButton("📂 Download File", url=link)]]
+    try:
+        await context.bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=caption,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        await update.message.reply_text("✅ File shared in channel!")
+    except Exception as e:
+        logger.error(f"Error sharing to channel: {e}")
+        await update.message.reply_text("⚠️ An error occurred while sharing to the channel.")
 
 async def myfiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -151,6 +196,41 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+# 🔹 Broadcast Command (Admin only)
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if user.id != OWNER_ID:
+        return await update.message.reply_text("⚠️ You are not allowed to use this command.")
+    if not context.args:
+        return await update.message.reply_text("⚠️ Usage: /broadcast <message>")
+
+    message = " ".join(context.args)
+    data = load_data()
+    users = data["users"].keys()
+
+    count = 0
+    for uid in users:
+        try:
+            await context.bot.send_message(chat_id=int(uid), text=message)
+            count += 1
+        except Exception as e:
+            logger.error(f"Failed to send broadcast to {uid}: {e}")
+
+    await update.message.reply_text(f"📢 Broadcast sent to {count} users.")
+
+# 🔹 Export Users.json (Admin only)
+async def export_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if user.id != OWNER_ID:
+        return await update.message.reply_text("⚠️ You are not allowed to use this command.")
+
+    data = load_data()
+    export_file = "users.json"
+    with open(export_file, "w") as f:
+        json.dump(data["users"], f, indent=4)
+
+    await update.message.reply_document(document=InputFile(export_file), filename="users.json")
+
 # Flask health check
 @app.route('/health')
 def health():
@@ -170,6 +250,10 @@ def main():
     application.add_handler(CommandHandler("myfiles", myfiles))
     application.add_handler(CommandHandler("delete", delete_file))
     application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("broadcast", broadcast))
+    application.add_handler(CommandHandler("exportusers", export_users))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, caption_handler))
 
     logger.info("Starting bot with polling...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
