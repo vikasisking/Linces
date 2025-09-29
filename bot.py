@@ -6,7 +6,6 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
@@ -18,7 +17,6 @@ BOT_USERNAME = "freeefilebot"
 DEV_URL = "https://t.me/hiden_25"
 CHANNEL_URL = "https://t.me/freeotpss"
 OWNER_ID = 7761576669
-CHANNEL_ID = -1003033705024
 
 DB_PATH = "filebot.db"
 
