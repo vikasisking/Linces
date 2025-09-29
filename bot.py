@@ -12,8 +12,8 @@ from telegram.ext import (
 from flask import Flask, Response
 
 # ================= CONFIG =================
-TOKEN = "7727135902:AAEINRfdD1rkV_78apIyMNqfWDwGyerM8xQ"
-BOT_USERNAME = "freeefilebot"
+TOKEN = "8496044042:AAEdkG5i66f_usippWuIZrYwVlIWIh5OIIM"
+BOT_USERNAME = "Akkwowiwirjrrbot"
 DEV_URL = "https://t.me/hiden_25"
 CHANNEL_URL = "https://t.me/freeotpss"
 OWNER_ID = 7761576669
