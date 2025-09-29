@@ -71,12 +71,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text(
         "📂 Welcome to *File Sharing Bot*\n\n"
-        "➡️ Send me any file and I will give you a sharable link.\n\n"
-        "🔹 Use /myfiles to see your uploaded files\n"
-        "🔹 Use /delete <key> to delete a file\n"
-        "🔹 Use /stats to see bot statistics (Admin only)\n"
-        "🔹 Use /broadcast <msg> to send message to all users (Admin only)\n"
-        "🔹 Use /exportusers to download users.json (Admin only)\n",
+        "➡️ Send me any file and I will give you a sharable link.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
