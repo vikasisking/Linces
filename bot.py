@@ -1,8 +1,6 @@
 import logging
 import os
-import threading
-from flask import Flask, request, Response
-from pymongo import MongoClient
+import sqlite3
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ApplicationBuilder,
@@ -12,17 +10,17 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+from flask import Flask, request, Response
 
 # ================= CONFIG =================
-TOKEN = os.getenv("TOKEN", "YOUR_BOT_TOKEN")
+TOKEN = os.getenv("TOKEN", "7727135902:AAEINRfdD1rkV_78apIyMNqfWDwGyerM8xQ")
 BOT_USERNAME = "freeefilebot"
 DEV_URL = "https://t.me/hiden_25"
 CHANNEL_URL = "https://t.me/freeotpss"
 OWNER_ID = 7761576669
 CHANNEL_ID = -1003033705024
 
-MONGO_URL = "mongodb+srv://darkdevil9793:1aNXaCVF88VBo1Ma@cluster0.8a6miuy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL")  # Render automatically sets this env var
+DB_PATH = "filebot.db"
 
 # ================ LOGGER ==================
 logging.basicConfig(
@@ -35,27 +33,39 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # ================ DB INIT =================
-try:
-    mongo_client = MongoClient(MONGO_URL)
-    db = mongo_client["file_bot_db"]
-    files_col = db["files"]
-    users_col = db["users"]
-    logger.info("MongoDB connected successfully!")
-except Exception as e:
-    logger.error(f"Failed to connect MongoDB: {e}")
-    raise
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+cur = conn.cursor()
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY
+);
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS files (
+    key TEXT PRIMARY KEY,
+    file_id TEXT NOT NULL,
+    user_id INTEGER,
+    downloads INTEGER DEFAULT 0
+);
+""")
+conn.commit()
 
 # ================ HANDLERS =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    users_col.update_one({"user_id": user.id}, {"$setOnInsert": {"user_id": user.id}}, upsert=True)
+    cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user.id,))
+    conn.commit()
 
     if context.args:
         file_key = context.args[0]
-        file_doc = files_col.find_one({"key": file_key})
-        if file_doc:
-            files_col.update_one({"key": file_key}, {"$inc": {"downloads": 1}})
-            await update.message.reply_document(file_doc["file_id"])
+        cur.execute("SELECT file_id FROM files WHERE key=?", (file_key,))
+        row = cur.fetchone()
+        if row:
+            cur.execute("UPDATE files SET downloads = downloads + 1 WHERE key=?", (file_key,))
+            conn.commit()
+            await update.message.reply_document(row[0])
             return
         else:
             await update.message.reply_text("❌ File not found or expired.")
@@ -88,23 +98,23 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("⚠️ Please send a valid file.")
 
     file_key = str(abs(hash(file_id)))[:10]
-    files_col.update_one(
-        {"key": file_key},
-        {"$set": {"file_id": file_id, "user_id": user.id}, "$setOnInsert": {"downloads": 0}},
-        upsert=True
+    cur.execute(
+        "INSERT OR REPLACE INTO files (key, file_id, user_id, downloads) VALUES (?, ?, ?, COALESCE((SELECT downloads FROM files WHERE key=?),0))",
+        (file_key, file_id, user.id, file_key)
     )
+    conn.commit()
 
     link = f"https://t.me/{BOT_USERNAME}?start={file_key}"
     await update.message.reply_text(f"✅ File stored!\n🔗 Link: {link}")
 
 async def myfiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    files = list(files_col.find({"user_id": user.id}))
-    if not files:
+    cur.execute("SELECT key FROM files WHERE user_id=?", (user.id,))
+    rows = cur.fetchall()
+    if not rows:
         return await update.message.reply_text("📂 You have no uploaded files.")
     msg = "📁 *Your Files:*\n\n"
-    for f in files:
-        key = f["key"]
+    for (key,) in rows:
         link = f"https://t.me/{BOT_USERNAME}?start={key}"
         msg += f"🔗 {link}\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
@@ -114,15 +124,18 @@ async def delete_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 1:
         return await update.message.reply_text("⚠️ Usage: /delete <file_key>")
     file_key = context.args[0]
-    files_col.delete_one({"key": file_key, "user_id": user.id})
+    cur.execute("DELETE FROM files WHERE key=? AND user_id=?", (file_key, user.id))
+    conn.commit()
     await update.message.reply_text("🗑 File deleted (if existed).")
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user.id != OWNER_ID:
         return await update.message.reply_text("⚠️ You are not allowed to use this command.")
-    total_files = files_col.count_documents({})
-    total_users = users_col.count_documents({})
+    cur.execute("SELECT COUNT(*) FROM files")
+    total_files = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM users")
+    total_users = cur.fetchone()[0]
     await update.message.reply_text(
         f"📊 *Bot Stats:*\n\n👥 Users: {total_users}\n📂 Files: {total_files}",
         parse_mode="Markdown"
@@ -148,11 +161,10 @@ def webhook():
     return Response("ok", status=200)
 
 if __name__ == "__main__":
-    # Set webhook on startup
     import asyncio
     async def set_webhook():
-        await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
-        logger.info(f"Webhook set to {WEBHOOK_URL}/{TOKEN}")
+        await application.bot.set_webhook(f"{os.getenv('RENDER_EXTERNAL_URL')}/{TOKEN}")
+        logger.info("Webhook set!")
 
     asyncio.get_event_loop().run_until_complete(set_webhook())
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
