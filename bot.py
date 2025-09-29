@@ -48,33 +48,41 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     data = load_data()
 
-    # Add user if not exists
-    if str(user.id) not in data["users"]:
-        data["users"][str(user.id)] = {"files": [], "username": user.username}
-        save_data(data)
-
     if context.args:
         file_key = context.args[0]
         if file_key in data["files"]:
             file_doc = data["files"][file_key]
             file_doc["downloads"] += 1
             save_data(data)
-            await update.message.reply_document(file_doc["file_id"])
+
+            # Inline buttons for Developer and Channel
+            keyboard = [
+                [
+                    InlineKeyboardButton("👨‍💻 Developer", url=DEV_URL),
+                    InlineKeyboardButton("📢 Channel", url=CHANNEL_URL)
+                ]
+            ]
+
+            await update.message.reply_document(
+                file_doc["file_id"],
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
             return
         else:
             await update.message.reply_text("❌ File not found or expired.")
             return
 
+    # Agar args nahi hain to normal start message
     keyboard = [
         [InlineKeyboardButton("👨‍💻 Developer", url=DEV_URL)],
         [InlineKeyboardButton("📢 Channel", url=CHANNEL_URL)]
     ]
     await update.message.reply_text(
-    "<blockquote>📂 Welcome To H2I Free File Bot\n\n"
-    "Here You Get Num@ber File</blockquote>\n\n"
-    "Join backup channel 👉 https://t.me/+rKlmo3b5gg5iMzVl",
-    reply_markup=InlineKeyboardMarkup(keyboard),
-    parse_mode="HTML"
+        "<blockquote>📂 Welcome To H2I Free File Bot\n\n"
+        "Here You Get Num@ber File</blockquote>\n\n"
+        "Join backup channel 👉 https://t.me/tgshehhe",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
     )
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
