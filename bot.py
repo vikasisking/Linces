@@ -16,7 +16,8 @@ from flask import Flask, Response
 TOKEN = "7433667530:AAHTYaW6Y76lfX5wN3q8ht7Zvp6-wCurObk"
 BOT_USERNAME = "freeefilebot"
 DEV_URL = "https://t.me/hiden_25"
-CHANNEL_URL = "https://t.me/freeotpss"
+CHANNEL_URL = "https://t.me/+1R-r0OSZJuVmOWZl"
+backup = "https://t.me/+cJJcOipvAohmODBl"
 OWNER_ID = 7761576669
 CHANNEL_ID = -1003033705024
 
@@ -59,7 +60,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [
                 [
                     InlineKeyboardButton("👨‍💻 Developer", url=DEV_URL),
-                    InlineKeyboardButton("📢 Channel", url=CHANNEL_URL)
+                    InlineKeyboardButton("🚀 0tp Group", url=CHANNEL_URL)
                 ]
             ]
 
@@ -74,12 +75,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Agar args nahi hain to normal start message
     keyboard = [
-        [InlineKeyboardButton("👨‍💻 Developer", url=DEV_URL)],
-        [InlineKeyboardButton("📢 Channel", url=CHANNEL_URL)]
+        [InlineKeyboardButton("👨‍💻 Developer", url=DEV_URL), InlineKeyboardButton("🚀 0tp Group", url=CHANNEL_URL)],
+        [InlineKeyboardButton("🚀 Backup", url=backup)]
     ]
     await update.message.reply_text(
         "<blockquote>📂 Welcome To H2I Free File Bot\n\n"
-        "Here You Get Num@ber File</blockquote>",
+        "Here You Get Num@ber File</blockquote>\n\n"
+        "Join Backup Channel:- https://t.me/+cJJcOipvAohmODBl" 
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
