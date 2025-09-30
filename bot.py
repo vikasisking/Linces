@@ -79,8 +79,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text(
         "<blockquote>📂 Welcome To H2I Free File Bot\n\n"
-        "Here You Get Num@ber File</blockquote>\n\n"
-        "Join backup channel 👉 https://t.me/tgshehhe",
+        "Here You Get Num@ber File</blockquote>",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
